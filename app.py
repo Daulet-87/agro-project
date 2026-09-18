@@ -147,7 +147,7 @@ if st.button("🚀 ЗАПУСТИТЬ КОМПЛЕКСНЫЙ ИИ-АНАЛИЗ �
         base_ndvi = max(0.20, base_ndvi)
 
         data_base = pd.DataFrame([[input_osadki_may, input_osadki_june, input_osadki_july, input_temp_july, base_ndvi]], columns=features)
-        yield_base = float(model.predict(data_base))
+        yield_base = float(model.predict(data_base)[0])
 
         # 2. Адаптивный сценарий (с защитой)
         boosted_ndvi = float(round(df["NDVI"].mean(), 2)) + (base_cost_per_ha / 10000) * 0.08
@@ -162,7 +162,7 @@ if st.button("🚀 ЗАПУСТИТЬ КОМПЛЕКСНЫЙ ИИ-АНАЛИЗ �
         boosted_ndvi = min(0.85, boosted_ndvi)
 
         data_boosted = pd.DataFrame([[input_osadki_may, input_osadki_june, adj_osadki_july, adj_temp_july, boosted_ndvi]], columns=features)
-        yield_boosted = float(model.predict(data_boosted))
+        yield_boosted = float(model.predict(data_boosted)[0])
 
         # Финансовые расчеты
         total_investment = total_cost_per_ha * area
