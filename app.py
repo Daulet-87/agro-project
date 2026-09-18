@@ -23,12 +23,15 @@ def parse_interval(val):
     val_str = str(val).replace("+", "").replace("%", "").strip()
     parts = re.split(r"–|-|…", val_str)
     try:
-        parts = [float(p.strip()) for p in parts if p.strip()]
-        if len(parts) == 2:
-            return sum(parts) / 2
-        elif len(parts) == 1:
-            return parts[0]
-    except ValueError:
+        nums = []
+        for p in parts:
+            if p.strip():
+                nums.append(float(p.strip()))
+        if len(nums) == 2:
+            return sum(nums) / 2
+        elif len(nums) == 1:
+            return nums[0]
+    except Exception:
         pass
     return np.nan
 
@@ -123,7 +126,7 @@ if btn_calculate:
 
     # Расчет базового сценария (без защиты)
     data_base = pd.DataFrame([[input_osadki_may, input_osadki_june, input_osadki_july, input_temp_july, base_ndvi]], columns=features)
-    yield_base = max(4.0, min(float(model.predict(data_base)), 22.0))
+    yield_base = max(4.0, min(float(model.predict(data_base)[0]), 22.0))
 
     # Расчет адаптивного сценария (с защитой)
     adj_osadki_july = input_osadki_july + (15.0 if tech_drought else 0.0)
@@ -132,7 +135,7 @@ if btn_calculate:
     boosted_ndvi = min(0.85, boosted_ndvi)
 
     data_boosted = pd.DataFrame([[input_osadki_may, input_osadki_june, adj_osadki_july, adj_temp_july, boosted_ndvi]], columns=features)
-    yield_boosted = max(4.0, min(float(model.predict(data_boosted)), 22.0))
+    yield_boosted = max(4.0, min(float(model.predict(data_boosted)[0]), 22.0))
 
     # Сохраняем расчеты в сессию
     st.session_state.yield_base = yield_base
@@ -230,5 +233,4 @@ with tab2:
         try:
             current_excel = pd.read_excel(excel_filename)
             
-            new_row = {
-                "Год": int(new_year),
+            new_row_dict = {
