@@ -2,17 +2,17 @@ import numpy as np
 import pandas as pd
 import re
 import streamlit as st
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.linear_model import Ridge
 
 # Настройка интерфейса Streamlit
 st.set_page_config(
-    page_title="ИИ-АгроЩит Акмолинской области", 
+    page_title="ИИ-АгроЩит Зеренда", 
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-st.title("🌾 ИИ-Система «АгроЩит» — Прогнозирование урожайности и комплексное управление рисками")
-st.write("**Регион анализа:** Акмолинская область, Зерендинский район. Моделирование рисков на следующий (2026) год.")
+st.title("🌾 ИИ-Система «АгроЩит» — Прогнозирование баланса урожая")
+st.write("Моделирование физических объемов производства яровой пшеницы в Зерендинском районе.")
 
 # ==========================================
 # 1. ФУНКЦИЯ ДЛЯ АВТОМАТИЧЕСКОЙ ОЧИСТКИ ДАННЫХ
@@ -27,7 +27,7 @@ def parse_interval(val):
         if len(parts) == 2:
             return sum(parts) / 2
         elif len(parts) == 1:
-            return parts
+            return parts[0]
     except ValueError:
         pass
     return np.nan
@@ -35,6 +35,8 @@ def parse_interval(val):
 # ==========================================
 # 2. ЗАГРУЗКА ДАННЫХ ИЗ EXCEL
 # ==========================================
+excel_filename = "zerenda_data.xlsx"
+
 @st.cache_data
 def load_and_preprocess_data(file_path):
     try:
@@ -51,30 +53,30 @@ def load_and_preprocess_data(file_path):
     except Exception as e:
         return None, str(e)
 
-# Чтение файла
-excel_filename = "zerenda_data.xlsx"
 df, error_msg = load_and_preprocess_data(excel_filename)
 
 if error_msg:
-    st.error(f"❌ Ошибка загрузки '{excel_filename}'. Техническая ошибка: {error_msg}")
+    st.error(f"❌ Ошибка загрузки '{excel_filename}'. Проверьте файл. Техническая ошибка: {error_msg}")
     st.stop()
 
 # ==========================================
-# 3. ОБУЧЕНИЕ МОДЕЛИ
+# 3. ОБУЧЕНИЕ ИИ-МОДЕЛИ (Ridge)
 # ==========================================
 features = ["Осадки_Май", "Осадки_Июнь", "Осадки_Июль", "Темп_Июль", "NDVI"]
-X = df[features]
-y = df["Урожайность"]
 
-model = RandomForestRegressor(n_estimators=100, random_state=42)
-model.fit(X, y)
+def train_model(dataframe):
+    X = dataframe[features]
+    y = dataframe["Урожайность"]
+    clf = Ridge(alpha=1.0)
+    clf.fit(X, y)
+    return clf
 
-st.success(f"📊 База данных обновлена! Обучено на реальной истории за {len(df)} лет.")
+model = train_model(df)
 
 # ==========================================
-# 4. БОКОВАЯ ПАНЕЛЬ (САЙДБАР) — ВСЕ РИСКИ И ГАЛОЧКИ
+# 4. ЛЕВАЯ ПАНЕЛЬ (САЙДБАР) — ВСЕ НАСТРОЙКИ И КНОПКА ТУТ
 # ==========================================
-st.sidebar.header("🎛️ Параметры сезона")
+st.sidebar.header("🎛️ Параметры симуляции")
 
 st.sidebar.subheader("🌦️ Прогноз погоды")
 input_osadki_may = st.sidebar.slider("Осадки в Мае (мм)", 10, 60, int(df["Осадки_Май"].mean()))
@@ -82,134 +84,153 @@ input_osadki_june = st.sidebar.slider("Осадки в Июне (мм)", 10, 80,
 input_osadki_july = st.sidebar.slider("Осадки в Июле (мм)", 15, 120, int(df["Осадки_Июль"].mean()))
 input_temp_july = st.sidebar.slider("Средняя темп. июля (°C)", 18.0, 26.0, float(round(df["Темп_Июль"].mean(), 1)), 0.1)
 
-st.sidebar.subheader("💰 Бизнес-параметры")
-area = st.sidebar.number_input("Площадь хозяйства (га):", value=1000, step=100)
-price_per_ton = st.sidebar.number_input("Цена за тонну пшеницы (₸):", value=90000, step=5000)
+st.sidebar.subheader("🛡️ Меры защиты полей")
+tech_drought = st.sidebar.checkbox("Защита от засухи (No-Till + Антистрессанты)")
+tech_flood = st.sidebar.checkbox("Защита от переувлажнения (Фунгициды + Десикация)")
+tech_pest = st.sidebar.checkbox("Защита от вредителей (Инсектициды)")
 
-# ДИНАМИЧЕСКИЕ ТЕХНОЛОГИЧЕСКИЕ ГАЛОЧКИ
-st.sidebar.subheader("🛡️ Управление агроугрозами")
+st.sidebar.subheader("📐 Масштаб ТОО")
+area = st.sidebar.number_input("Площадь пашни хозяйства (га):", value=1000, step=100)
 
-# Определяем типы рисков на лету для удобства пользователя
-drought_risk = input_osadki_july < 30 or input_temp_july > 22.0
-flood_risk = input_osadki_july > 80  # Избыток влаги
-pest_risk = input_temp_july > 21.0 and input_osadki_june > 45  # Идеально для размножения вредителей
-
-# Показываем галочки в зависимости от того, какую погоду выставил фермер
-tech_notill = False
-tech_antistress = False
-tech_fungicide = False
-tech_desiccation = False
-tech_insecticide = False
-
-if drought_risk:
-    st.sidebar.warning("🚨 Прогноз указывает на ЗАСУХУ")
-    tech_notill = st.sidebar.checkbox("Внедрить No-Till технологию")
-    tech_antistress = st.sidebar.checkbox("Внести листовые антистрессанты")
-
-if flood_risk:
-    st.sidebar.warning("🌊 Прогноз указывает на ИЗБЫТОК ВЛАГИ")
-    tech_fungicide = st.sidebar.checkbox("Внести фунгициды (защита от грибка/ржавчины)")
-    tech_desiccation = st.sidebar.checkbox("Запланировать десикацию (сушку колоса на корню перед уборкой)")
-
-if pest_risk:
-    st.sidebar.warning("🐛 Высокий риск НАШЕСТВИЯ ВРЕДИТЕЛЕЙ")
-    tech_insecticide = st.sidebar.checkbox("Провести инсектицидную обработку полей")
-
-# Подсчет дополнительных затрат на гектар исходя из включенных мер защиты
-protection_cost_per_ha = 0
-if tech_notill: protection_cost_per_ha += 8000
-if tech_antistress: protection_cost_per_ha += 6000
-if tech_fungicide: protection_cost_per_ha += 12000
-if tech_desiccation: protection_cost_per_ha += 9000
-if tech_insecticide: protection_cost_per_ha += 7000
-
-st.markdown("---")
-st.header("💵 Симулятор затрат и ИИ-Аналитика рисков")
-base_cost_per_ha = st.slider("Базовые затраты на стандартные удобрения (₸ на 1 гектар):", 0, 40000, 15000, 1000)
-
-total_cost_per_ha = base_cost_per_ha + protection_cost_per_ha
-st.write(f"💵 **Итоговые операционные затраты составят:** {total_cost_per_ha:,.0f} ₸ / га (из них на защиту: {protection_cost_per_ha:,.0f} ₸)")
+# ГЛАВНАЯ КНОПКА В САЙДБАРЕ
+st.sidebar.markdown("---")
+btn_calculate = st.sidebar.button("🚀 РАССЧИТАТЬ ПРОГНОЗ ИИ", type="primary", use_container_width=True)
 
 # ==========================================
-# 5. ВЫЧИСЛЕНИЯ ПРИ НАЖАТИИ КНОПКИ
+# 5. ИНТЕРФЕЙС ГЛАВНОГО ОКНА (ВКЛАДКИ)
 # ==========================================
-st.markdown("###")
-if st.button("🚀 ЗАПУСТИТЬ КОМПЛЕКСНЫЙ ИИ-АНАЛИЗ СЕЗОНА", type="primary", use_container_width=True):
-    with st.spinner("ИИ просчитывает фитоклиматические сценарии..."):
+tab1, tab2 = st.tabs(["📊 ИИ-Анализ и Баланс Урожая", "🗃️ Управление исторической базой"])
+
+# СОСТОЯНИЕ ДЛЯ ХРАНЕНИЯ РЕЗУЛЬТАТОВ РАСЧЕТА
+if "calculated" not in st.session_state:
+    st.session_state.calculated = False
+
+if btn_calculate:
+    st.session_state.calculated = True
+    
+    # Логика моделирования рисков
+    is_drought = input_osadki_july < 32 or input_temp_july > 22.5
+    is_flooded = input_osadki_july > 80
+    is_pest_danger = input_temp_july > 21.0 and input_osadki_june > 45
+
+    base_ndvi = float(round(df["NDVI"].mean(), 2))
+
+    # Снижение NDVI без защиты
+    if is_drought and not tech_drought: base_ndvi -= 0.12
+    if is_flooded and not tech_flood: base_ndvi -= 0.10
+    if is_pest_danger and not tech_pest: base_ndvi -= 0.15
+    base_ndvi = max(0.20, base_ndvi)
+
+    # Расчет базового сценария (без защиты)
+    data_base = pd.DataFrame([[input_osadki_may, input_osadki_june, input_osadki_july, input_temp_july, base_ndvi]], columns=features)
+    yield_base = max(4.0, min(float(model.predict(data_base)), 22.0))
+
+    # Расчет адаптивного сценария (с защитой)
+    adj_osadki_july = input_osadki_july + (15.0 if tech_drought else 0.0)
+    adj_temp_july = input_temp_july - (0.5 if tech_drought else 0.0)
+    boosted_ndvi = float(round(df["NDVI"].mean(), 2)) + (0.05 if (tech_flood or tech_pest) else 0.0)
+    boosted_ndvi = min(0.85, boosted_ndvi)
+
+    data_boosted = pd.DataFrame([[input_osadki_may, input_osadki_june, adj_osadki_july, adj_temp_july, boosted_ndvi]], columns=features)
+    yield_boosted = max(4.0, min(float(model.predict(data_boosted)), 22.0))
+
+    # Сохраняем расчеты в сессию
+    st.session_state.yield_base = yield_base
+    st.session_state.yield_boosted = yield_boosted
+    st.session_state.is_drought = is_drought
+    st.session_state.is_flooded = is_flooded
+    st.session_state.is_pest_danger = is_pest_danger
+
+# ВКЛАДКА 1: ВЫВОД РЕЗУЛЬТАТОВ РАСЧЕТА
+with tab1:
+    if st.session_state.calculated:
+        y_base = st.session_state.yield_base
+        y_boosted = st.session_state.yield_boosted
         
-        # 1. Базовый сценарий (без мер защиты)
-        base_ndvi = float(round(df["NDVI"].mean(), 2))
+        # Расчет посевного и уборочного баланса
+        seed_rate = 0.15  # 150 кг на га = 0.15 тонн на га
+        total_seeds = area * seed_rate
         
-        # Если фермер ничего не делает в плохую погоду, NDVI падает из-за болезней/засухи/вредителей
-        if drought_risk and not (tech_notill or tech_antistress): base_ndvi -= 0.15
-        if flood_risk and not tech_fungicide: base_ndvi -= 0.12  # Ржавчина съедает биомассу
-        if pest_risk and not tech_insecticide: base_ndvi -= 0.18  # Вредители съедают листья
-        base_ndvi = max(0.20, base_ndvi)
-
-        data_base = pd.DataFrame([[input_osadki_may, input_osadki_june, input_osadki_july, input_temp_july, base_ndvi]], columns=features)
-        yield_base = float(model.predict(data_base)[0])
-
-        # 2. Адаптивный сценарий (с защитой)
-        boosted_ndvi = float(round(df["NDVI"].mean(), 2)) + (base_cost_per_ha / 10000) * 0.08
+        yield_ton_per_ha_base = y_base / 10
+        yield_ton_per_ha_boosted = y_boosted / 10
         
-        # Корректируем виртуальные маркеры для модели, если галочки активированы
-        adj_osadki_july = input_osadki_july
-        adj_temp_july = input_temp_july
-        
-        if tech_notill: adj_osadki_july += 15.0
-        if tech_antistress: adj_temp_july -= 0.5
-        if tech_fungicide or tech_insecticide: boosted_ndvi += 0.05
-        boosted_ndvi = min(0.85, boosted_ndvi)
+        total_harvest_base = yield_ton_per_ha_base * area
+        total_harvest_boosted = yield_ton_per_ha_boosted * area
 
-        data_boosted = pd.DataFrame([[input_osadki_may, input_osadki_june, adj_osadki_july, adj_temp_july, boosted_ndvi]], columns=features)
-        yield_boosted = float(model.predict(data_boosted)[0])
+        col_m1, col_m2 = st.columns(2)
+        with col_m1:
+            st.subheader("🌾 Прогноз продуктивности с 1 гектара")
+            st.metric(label="Урожайность (С мерами защиты)", value=f"{y_boosted:.2f} ц/га", delta=f"+{y_boosted - y_base:.2f} ц/га")
+            st.info(f"📋 В весовом эквиваленте: **{yield_ton_per_ha_boosted:.3f} тонн / га**")
 
-        # Финансовые расчеты
-        total_investment = total_cost_per_ha * area
-        revenue_base = ((yield_base * area) / 10) * price_per_ton
-        revenue_boosted = ((yield_boosted * area) / 10) * price_per_ton
-        net_profit = (revenue_boosted - revenue_base) - (protection_cost_per_ha * area)
-        roi = (net_profit / total_investment * 100) if total_investment > 0 else 0.0
+        with col_m2:
+            st.subheader("📐 Натуральный баланс производства ТОО")
+            st.warning(f"🚜 **Необходимый объем семян для посева:** {total_seeds:,.1f} тонн семян")
+            st.success(f"🌾 **Ожидаемый валовый сбор урожая:** {total_harvest_boosted:,.1f} тонн чистого зерна")
 
-        # Корректировка цены из-за потери качества зерна, если была влага, но нет фунгицидов
-        quality_loss_text = ""
-        if flood_risk and not tech_fungicide:
-            revenue_base *= 0.8  # Минус 20% цены из-за падения класса до фуража
-            quality_loss_text = "⚠️ *Внимание: Цена базового сценария снижена на 20%, так как без фунгицидов зерно прорастет и заразится грибком (фураж).* "
-
-        # Вывод экономических метрик
-        st.markdown("### 📊 Аналитический отчет ИИ")
-        metric_1, metric_2, metric_3 = st.columns(3)
-
-        with metric_1:
-            st.metric(
-                label="Прогноз урожайности (С защитой)", 
-                value=f"{yield_boosted:.2f} ц/га",
-                delta=f"+{yield_boosted - yield_base:.2f} ц/га к базовому сценарию"
-            )
-        with metric_2:
-            st.metric(label="Общий бюджет сезона", value=f"{total_investment:,.0f} ₸", delta=f"Затраты на защиту: {protection_cost_per_ha * area:,.0f} ₸", delta_color="inverse")
-        with metric_3:
-            if net_profit > 0:
-                st.metric(label="Чистая прибыль от защитных мер", value=f"+{net_profit:,.0f} ₸", delta=f"Общий ROI: {roi:.1f}%")
-            else:
-                st.metric(label="Чистая прибыль от защитных мер", value=f"{net_profit:,.0f} ₸", delta=f"Общий ROI: {roi:.1f}%", delta_color="inverse")
-
-        if quality_loss_text:
-            st.warning(quality_loss_text)
-
-        # ==========================================
-        # МОДУЛЬ ЭКСПЕРТНЫХ СОВЕТОВ (РЕКОМЕНДАТЕЛЬНАЯ СИСТЕМА)
-        # ==========================================
+        # Информационные агро-рекомендации ИИ
         st.markdown("---")
-        st.subheader("🤖 Персонализированные рекомендации ИИ-Советника")
+        st.subheader("🤖 Отчет ИИ-Советника об угрозах")
         
-        recs = []
-        if drought_risk:
-            st.error("🔥 **КРИТИЧЕСКИЙ РИСК ЗАСУХИ!**")
-            if not tech_notill: recs.append("💡 Внедрите технологию **No-Till** для снижения испарения влаги из почвы.")
-            if not tech_antistress: recs.append("💡 Внесите **аминокислотные антистрессанты** по листу, чтобы защитить растение от температурного шока.")
+        recs_count = 0
+        if st.session_state.is_drought:
+            st.error("🔥 **Зафиксирован критический маркер засухи!**")
+            if not tech_drought: 
+                st.warning("⚠️ Поле не защищено. Требуется активировать No-Till для сохранения влаги.")
+                recs_count += 1
+        if st.session_state.is_flooded:
+            st.info("🌊 **Зафиксирован избыток осадков в июле!**")
+            if not tech_flood: 
+                st.warning("⚠️ Высокий риск грибка и неравномерного созревания. Требуются фунгициды и десикация.")
+                recs_count += 1
+        if st.session_state.is_pest_danger:
+            st.error("🐛 **Погода благоприятна для размножения вредителей!**")
+            if not tech_pest: 
+                st.warning("⚠️ Обнаружен риск потери биомассы. Необходима инсектицидная обработка.")
+                recs_count += 1
+
+        if recs_count == 0:
+            st.success("🎉 Все технологические риски компенсированы защитными мерами. Потенциал сбора максимальный.")
+            
+        # Натуральный график сравнения сбора
+        st.markdown("### 📊 Сравнение сбора зерна холдинга (Тонн)")
+        chart_df = pd.DataFrame({
+            'Сценарий': ['Без защиты рисков', 'С ИИ-Агрозащитой'],
+            'Валовый сбор (Тонн)': [total_harvest_base, total_harvest_boosted]
+        })
+        st.bar_chart(chart_df.set_index('Сценарий'))
         
-        if flood_risk:
-            st.info("🌊 **РИСК ПЕРЕУВЛАЖНЕНИЯ И ПОТЕРИ КАЧЕСТВА УРОЖАЯ!**")
-            if not tech_fungicide: recs.append("💡 **Срочно внесите фунгициды** (Триазолы или Стробилурины). При избытке влаги пшеница мгновенно заболеет ржавчиной, что снизит класс зерна до некондиционного.")
+    else:
+        st.info("👈 Выставите параметры погоды, выберите технологии защиты и нажмите кнопку **«РАССЧИТАТЬ ПРОГНОЗ ИИ»** в левой панели для получения аналитики.")
+
+# ВКЛАДКА 2: ВНЕСЕНИЕ НОВЫХ ДАННЫХ И ИСТОРИЯ
+with tab2:
+    st.subheader("➕ Добавление результатов прошедшего года")
+    st.write("Заполните показатели ушедшего сезона, чтобы занести их в Excel и обновить ИИ-модель:")
+    
+    col_in1, col_in2, col_in3 = st.columns(3)
+    with col_in1:
+        new_year = st.number_input("Год:", min_value=2026, max_value=2040, value=2026)
+        new_yield = st.text_input("Урожайность пшеницы (ц/га):", value="12.0 – 13.5")
+    with col_in2:
+        new_may = st.text_input("Осадки Май (мм):", value="25 – 30")
+        new_june = st.text_input("Осадки Июнь (мм):", value="45 – 50")
+    with col_in3:
+        new_july = st.text_input("Осадки Июль (мм):", value="60 – 65")
+        new_temp = st.text_input("Средняя темп. июля (°C):", value="+20.0…+20.5")
+        
+    col_in4, col_in5 = st.columns(2)
+    with col_in4:
+        new_ndvi = st.text_input("Макс. NDVI (июль):", value="0.55 – 0.60")
+    with col_in5:
+        st.write("###")
+        btn_add_data = st.button("💾 Записать в Excel и переобучить модель", use_container_width=True)
+
+    if btn_add_data:
+        try:
+            # Читаем текущий Excel
+            current_excel = pd.read_excel(excel_filename)
+            
+            # Создаем новую строчку
+            new_row = {
+                "Год": new_year,
