@@ -6,7 +6,7 @@ from sklearn.linear_model import Ridge
 import plotly.graph_objects as go
 
 # Настройка интерфейса
-st.set_page_config(page_title="ИИ-АгроЩит Зеренда", layout="wide")
+st.set_page_config(page_title="ИИ-Aqmola CropIQ", layout="wide")
 
 st.title("🌾 Aqmola CropIQ")
 st.write("Моделирование рисков и продуктивности яровой пшеницы в Зерендинском районе.")
