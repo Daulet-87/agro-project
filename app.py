@@ -228,8 +228,7 @@ with tab2:
 
     if btn_add_data:
         try:
-            # Читаем текущий Excel
             current_excel = pd.read_excel(excel_filename)
             
-            # Создаем новую строчку
             new_row = {
+                "Год": int(new_year),
