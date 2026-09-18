@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-import re
 import streamlit as st
 from sklearn.linear_model import Ridge
 
@@ -20,20 +19,26 @@ st.write("Моделирование физических объемов про�
 def parse_interval(val):
     if pd.isna(val):
         return np.nan
-    val_str = str(val).replace("+", "").replace("%", "").strip()
-    parts = re.split(r"–|-|…", val_str)
+    
+    # Очищаем строку от лишних символов
+    s = str(val).replace("+", "").replace("%", "").strip()
+    
+    # Делим строку по любым разделителям интервалов
+    for sep in ["–", "-", "…"]:
+        if sep in s:
+            parts = s.split(sep)
+            try:
+                p1 = float(parts[0].strip())
+                p2 = float(parts[1].strip())
+                return (p1 + p2) / 2
+            except Exception:
+                pass
+                
+    # Если это просто одиночное число
     try:
-        nums = []
-        for p in parts:
-            if p.strip():
-                nums.append(float(p.strip()))
-        if len(nums) == 2:
-            return sum(nums) / 2
-        elif len(nums) == 1:
-            return nums[0]
+        return float(s)
     except Exception:
-        pass
-    return np.nan
+        return np.nan
 
 # ==========================================
 # 2. ЗАГРУЗКА ДАННЫХ ИЗ EXCEL
@@ -126,7 +131,7 @@ if btn_calculate:
 
     # Расчет базового сценария (без защиты)
     data_base = pd.DataFrame([[input_osadki_may, input_osadki_june, input_osadki_july, input_temp_july, base_ndvi]], columns=features)
-    yield_base = max(4.0, min(float(model.predict(data_base)[0]), 22.0))
+    yield_base = max(4.0, min(float(model.predict(data_base)), 22.0))
 
     # Расчет адаптивного сценария (с защитой)
     adj_osadki_july = input_osadki_july + (15.0 if tech_drought else 0.0)
@@ -135,7 +140,7 @@ if btn_calculate:
     boosted_ndvi = min(0.85, boosted_ndvi)
 
     data_boosted = pd.DataFrame([[input_osadki_may, input_osadki_june, adj_osadki_july, adj_temp_july, boosted_ndvi]], columns=features)
-    yield_boosted = max(4.0, min(float(model.predict(data_boosted)[0]), 22.0))
+    yield_boosted = max(4.0, min(float(model.predict(data_boosted)), 22.0))
 
     # Сохраняем расчеты в сессию
     st.session_state.yield_base = yield_base
@@ -229,8 +234,3 @@ with tab2:
         st.write("###")
         btn_add_data = st.button("💾 Записать в Excel и переобучить модель", use_container_width=True)
 
-    if btn_add_data:
-        try:
-            current_excel = pd.read_excel(excel_filename)
-            
-            new_row_dict = {
